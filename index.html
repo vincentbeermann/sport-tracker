@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0a0a0a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Sport">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <title>Sport</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1 id="screen-title">Sport</h1>
+  </header>
+
+  <main id="view"></main>
+
+  <nav id="tabbar">
+    <a href="#run"       data-route="run"       data-icon="🏃"><span>Run</span></a>
+    <a href="#yoga"      data-route="yoga"      data-icon="🧘"><span>Yoga</span></a>
+    <a href="#kb"        data-route="kb"        data-icon="🔔"><span>KB</span></a>
+    <a href="#gym"       data-route="gym"       data-icon="🏋️"><span>Gym</span></a>
+    <a href="#dashboard" data-route="dashboard" data-icon="📊"><span>Dash</span></a>
+  </nav>
+
+  <script src="storage.js"></script>
+  <script src="exercises.js"></script>
+  <script src="modules/gym.js"></script>
+  <script src="modules/run.js"></script>
+  <script src="modules/yoga.js"></script>
+  <script src="modules/kb.js"></script>
+  <script src="modules/dashboard.js"></script>
+  <script src="app.js"></script>
+  <script>
+    // Register service worker for offline / install
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(err => {
+          console.warn('SW registration failed:', err);
+        });
+      });
+    }
+  </script>
+</body>
+</html>
