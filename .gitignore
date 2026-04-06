@@ -1,0 +1,14 @@
+# Node
+Code/legacy/node_modules/
+node_modules/
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+
+# Local data exports
+*.local.json
+backups/

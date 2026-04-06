@@ -1,0 +1,12 @@
+{
+  "name": "side-sport-webapp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local training tracker for Vincent. Single user, localhost only.",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0"
+  }
+}
