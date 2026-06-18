@@ -45,8 +45,32 @@ window.GymModule = (function () {
 
   async function startWorkout(variant) {
     const session = await window.api.createSession({ module: 'gym', variant, sets: [] });
-    state = { sessionId: session.id, variant, sets: [] };
+    state = { sessionId: session.id, variant, sets: [], lastByExercise: {} };
     rerender();
+    // Load "last time" per exercise from previous gym sessions (non-blocking).
+    try {
+      const { sessions } = await window.api.getSessions();
+      state.lastByExercise = computeLastByExercise(sessions, session.id);
+      if (state) rerender();
+    } catch (e) { /* ignore */ }
+  }
+
+  // For each exercise, the sets from the most recent PRIOR gym session that
+  // included it. getSessions() returns newest-first, so the first hit wins.
+  function computeLastByExercise(sessions, currentId) {
+    const map = {};
+    for (const s of sessions) {
+      if (s.module !== 'gym' || s.id === currentId || !Array.isArray(s.sets)) continue;
+      const byEx = {};
+      for (const set of s.sets) {
+        if (!set || !set.exercise) continue;
+        (byEx[set.exercise] = byEx[set.exercise] || []).push(set);
+      }
+      for (const ex in byEx) {
+        if (!map[ex]) map[ex] = { date: s.date, sets: byEx[ex] };
+      }
+    }
+    return map;
   }
 
   function renderWorkout() {
@@ -66,6 +90,8 @@ window.GymModule = (function () {
     `;
     header.querySelector('#end-workout').addEventListener('click', () => {
       if (confirm('Workout beenden? Sets bleiben gespeichert.')) {
+        discardIfEmpty();
+        stopRest(false);
         state = null;
         rerender();
       }
@@ -142,6 +168,15 @@ window.GymModule = (function () {
     const wrap = document.createElement('div');
     wrap.className = 'set-logger';
 
+    // "Last time" reference from the previous gym session.
+    const last = state.lastByExercise && state.lastByExercise[ex.exercise];
+    if (last && last.sets.length) {
+      const lastLine = document.createElement('div');
+      lastLine.className = 'exercise-last';
+      lastLine.textContent = 'Letztes Mal: ' + last.sets.map(s => `${s.weight}×${s.reps}`).join(' · ');
+      wrap.appendChild(lastLine);
+    }
+
     const list = document.createElement('div');
     list.className = 'set-list';
 
@@ -191,10 +226,11 @@ window.GymModule = (function () {
     const repsIn   = input.querySelector('.reps-in');
     const addBtn   = input.querySelector('.add-set');
 
-    // Pre-fill with last set's weight for convenience
+    // Pre-fill the weight: this session's last set, else last time's top set.
     if (existing.length > 0) {
-      const last = existing[existing.length - 1];
-      weightIn.value = last.weight;
+      weightIn.value = existing[existing.length - 1].weight;
+    } else if (last && last.sets.length) {
+      weightIn.value = last.sets[last.sets.length - 1].weight;
     }
 
     function commitSet() {
@@ -204,6 +240,7 @@ window.GymModule = (function () {
       state.sets.push({ exercise: ex.exercise, weight: w, reps: r });
       saveSets();
       rerenderList();
+      startRest(90); // rest timer between sets
       // keep weight, clear reps for the next set
       repsIn.value = '';
       repsIn.focus();
@@ -234,5 +271,82 @@ window.GymModule = (function () {
     document.getElementById('view').replaceChildren(render());
   }
 
-  return { render, reset: () => { state = null; } };
+  // ---------- rest timer (floating bar) ----------
+
+  let audioCtx = null;
+  function beep(freq, ms) {
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended' && audioCtx.resume) audioCtx.resume();
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.frequency.value = freq; o.type = 'sine';
+      const n = audioCtx.currentTime;
+      g.gain.setValueAtTime(0, n);
+      g.gain.linearRampToValueAtTime(0.2, n + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, n + ms / 1000);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(n); o.stop(n + ms / 1000 + 0.05);
+    } catch (e) {}
+  }
+  function vibrate(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {} }
+
+  let restEndMs = 0, restTimer = null;
+
+  function getRestBar() {
+    let bar = document.getElementById('rest-bar');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'rest-bar';
+      bar.innerHTML = `
+        <span class="rest-label">Pause</span>
+        <span class="rest-time">0:00</span>
+        <button type="button" class="rest-add">+30s</button>
+        <button type="button" class="rest-skip">Skip</button>
+      `;
+      bar.querySelector('.rest-add').addEventListener('click', () => { restEndMs += 30000; paintRest(); });
+      bar.querySelector('.rest-skip').addEventListener('click', () => stopRest(false));
+      document.body.appendChild(bar);
+    }
+    return bar;
+  }
+  function paintRest() {
+    const bar = getRestBar();
+    const remaining = Math.max(0, Math.round((restEndMs - Date.now()) / 1000));
+    bar.querySelector('.rest-time').textContent = Math.floor(remaining / 60) + ':' + String(remaining % 60).padStart(2, '0');
+  }
+  function startRest(seconds) {
+    restEndMs = Date.now() + seconds * 1000;
+    getRestBar().classList.add('show');
+    paintRest();
+    clearInterval(restTimer);
+    restTimer = setInterval(() => {
+      if (Date.now() >= restEndMs) { stopRest(true); return; }
+      paintRest();
+    }, 250);
+  }
+  function stopRest(rang) {
+    clearInterval(restTimer); restTimer = null;
+    const bar = document.getElementById('rest-bar');
+    if (!bar) return;
+    if (rang) {
+      bar.querySelector('.rest-time').textContent = 'fertig';
+      beep(880, 260); vibrate(140);
+      setTimeout(() => bar.classList.remove('show'), 1600);
+    } else {
+      bar.classList.remove('show');
+    }
+  }
+
+  // Discard a gym session that was opened but never had a set logged, so empty
+  // workouts don't pollute the calendar/stats.
+  function discardIfEmpty() {
+    if (state && state.sessionId && (!state.sets || state.sets.length === 0)) {
+      window.api.deleteSession(state.sessionId).catch(() => {});
+    }
+  }
+
+  return {
+    render,
+    reset: () => { discardIfEmpty(); stopRest(false); state = null; },
+  };
 })();

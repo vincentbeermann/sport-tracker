@@ -18,9 +18,21 @@
 <body>
   <header>
     <h1 id="screen-title">Sport</h1>
+    <button id="btn-signout" type="button" title="Abmelden" aria-label="Abmelden" style="display:none">⎋</button>
   </header>
 
   <main id="view"></main>
+
+  <!-- Login gate: covers the app until the user signs in (cross-device sync). -->
+  <div id="auth-overlay">
+    <div class="auth-card">
+      <div class="auth-logo">🏋️</div>
+      <h2>Sport Tracker</h2>
+      <p>Melde dich an, um deine Einheiten geräteübergreifend zu synchronisieren.</p>
+      <button id="btn-login" type="button">Mit Google anmelden</button>
+      <p id="auth-who" class="auth-who"></p>
+    </div>
+  </div>
 
   <nav id="tabbar">
     <a href="#run"       data-route="run"       data-icon="🏃"><span>Run</span></a>
@@ -29,6 +41,15 @@
     <a href="#gym"       data-route="gym"       data-icon="🏋️"><span>Gym</span></a>
     <a href="#dashboard" data-route="dashboard" data-icon="📊"><span>Dash</span></a>
   </nav>
+
+  <!-- Firebase SDK (vendored locally so the PWA stays offline-capable) -->
+  <script src="vendor/firebase-app-compat.js"></script>
+  <script src="vendor/firebase-auth-compat.js"></script>
+  <script src="vendor/firebase-firestore-compat.js"></script>
+  <script src="vendor/firebase-messaging-compat.js"></script>
+  <script src="firebase-config.js"></script>
+  <script src="firebase-init.js"></script>
+  <script src="messaging.js"></script>
 
   <script src="storage.js"></script>
   <script src="exercises.js"></script>
@@ -41,6 +62,17 @@
   <script>
     // Register service worker for offline / install
     if ('serviceWorker' in navigator) {
+      // Auto-update: reload once when a new SW takes control after a deploy,
+      // so the latest version shows without a manual relaunch. Guarded so the
+      // first install (no prior controller) doesn't reload.
+      if (navigator.serviceWorker.controller) {
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (refreshing) return;
+          refreshing = true;
+          location.reload();
+        });
+      }
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js').catch(err => {
           console.warn('SW registration failed:', err);

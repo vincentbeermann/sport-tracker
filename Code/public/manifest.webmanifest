@@ -1,7 +1,7 @@
 {
   "name": "Sport Tracker",
   "short_name": "Sport",
-  "description": "Local training tracker - run, yoga, kettlebell HIIT, gym",
+  "description": "Training tracker - run, yoga, kettlebell HIIT, gym. Synced across your devices.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

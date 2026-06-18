@@ -12,3 +12,12 @@ node_modules/
 # Local data exports
 *.local.json
 backups/
+
+# Firebase CLI artefacts (never commit credentials or local caches)
+.firebase/
+*-debug.log
+firebase-debug.log
+firestore-debug.log
+*serviceAccount*.json
+*adminsdk*.json
+.claude/

@@ -77,10 +77,58 @@ window.DashboardModule = (function () {
     }
     out.push(breakdown);
 
+    // Reminders (push)
+    out.push(buildRemindersCard());
+
     // Data management card (export / import / wipe)
     out.push(buildDataCard());
 
     return out;
+  }
+
+  function buildRemindersCard() {
+    const card = document.createElement('div');
+    card.className = 'card';
+    const R = window.Reminders;
+    const supported = R && R.supported;
+    const perm = R ? R.permission() : 'unsupported';
+
+    let statusLine;
+    if (!supported) {
+      statusLine = perm === 'unsupported'
+        ? 'In diesem Browser nicht verfügbar.'
+        : 'Nur in der installierten App (nicht im lokalen Dev).';
+    } else if (perm === 'granted') {
+      statusLine = 'Erinnerungen sind an. ✓';
+    } else if (perm === 'denied') {
+      statusLine = 'In den Browser-Einstellungen blockiert.';
+    } else {
+      statusLine = 'Tägliche Erinnerung, deine Einheit zu machen.';
+    }
+
+    card.innerHTML = `
+      <h3>Erinnerungen</h3>
+      <p class="muted" style="font-size:13px;">${statusLine}</p>
+      <div class="data-actions">
+        <button id="enable-reminders" class="secondary"${(!supported || perm === 'granted' || perm === 'denied') ? ' disabled' : ''}>Erinnerungen aktivieren</button>
+      </div>
+    `;
+
+    const btn = card.querySelector('#enable-reminders');
+    if (btn && supported && perm !== 'denied') {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        btn.textContent = 'Aktiviere…';
+        const res = await window.Reminders.enable();
+        if (res && res.ok) {
+          if (window.showToast) window.showToast('Erinnerungen aktiviert');
+        } else {
+          if (window.showToast) window.showToast('Konnte nicht aktivieren');
+        }
+        document.getElementById('view').replaceChildren(render());
+      });
+    }
+    return card;
   }
 
   function buildDataCard() {
@@ -88,7 +136,7 @@ window.DashboardModule = (function () {
     card.className = 'card';
     card.innerHTML = `
       <h3>Daten</h3>
-      <p class="muted" style="font-size:13px;">Backup gelegentlich exportieren - alles liegt nur auf diesem Gerät.</p>
+      <p class="muted" style="font-size:13px;">Über deinen Account geräteübergreifend synchronisiert. Export für ein lokales Backup.</p>
       <div class="data-actions">
         <button id="export-data" class="secondary">Export</button>
         <button id="import-data" class="secondary">Import</button>
