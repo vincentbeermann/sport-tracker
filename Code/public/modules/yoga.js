@@ -3,7 +3,7 @@
 window.YogaModule = (function () {
   function render() {
     const root = document.createElement('div');
-    root.className = 'view';
+    root.className = 'view view-center';
 
     const inspire = document.createElement('div');
     inspire.className = 'card';

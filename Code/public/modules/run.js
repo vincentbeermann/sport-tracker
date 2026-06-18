@@ -5,7 +5,7 @@ window.RunModule = (function () {
 
   function render() {
     const root = document.createElement('div');
-    root.className = 'view';
+    root.className = 'view view-center';
     if (state.phase === 'info') {
       root.appendChild(renderInfo());
     } else {

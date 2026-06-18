@@ -1,7 +1,8 @@
-// Service Worker - cache-first for app shell, runtime cache for fonts.
-// Bumps CACHE_VERSION to force a refresh after deploys.
+// Service Worker - stale-while-revalidate app shell + network-first navigation,
+// so deployed updates reach installed devices on the next launch. Precache uses
+// {cache:'reload'} so a new version never caches a stale (max-age) copy.
 
-const CACHE_VERSION = 'sport-v1';
+const CACHE_VERSION = 'sport-firebase-v5';
 const APP_SHELL = [
   './',
   'index.html',
@@ -9,6 +10,13 @@ const APP_SHELL = [
   'app.js',
   'storage.js',
   'exercises.js',
+  'firebase-config.js',
+  'firebase-init.js',
+  'messaging.js',
+  'vendor/firebase-app-compat.js',
+  'vendor/firebase-auth-compat.js',
+  'vendor/firebase-firestore-compat.js',
+  'vendor/firebase-messaging-compat.js',
   'modules/gym.js',
   'modules/run.js',
   'modules/yoga.js',
@@ -21,10 +29,13 @@ const APP_SHELL = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_VERSION).then((cache) => cache.addAll(APP_SHELL).catch(err => {
-      // Don't fail install if a single asset is missing (e.g. icon not yet generated)
-      console.warn('SW install: some assets failed to cache:', err);
-    })),
+    caches.open(CACHE_VERSION).then((cache) =>
+      // {cache:'reload'} bypasses the HTTP cache (Firebase serves max-age=3600),
+      // so a new SW version never precaches a stale copy after a deploy.
+      cache.addAll(APP_SHELL.map((u) => new Request(u, { cache: 'reload' }))).catch(err => {
+        // Don't fail install if a single asset is missing (e.g. icon not yet generated)
+        console.warn('SW install: some assets failed to cache:', err);
+      })),
   );
   self.skipWaiting();
 });
@@ -54,18 +65,18 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache-first for everything else
+  // Stale-while-revalidate for everything else: serve cache fast, refresh in
+  // the background so the next launch picks up a new deploy automatically.
   event.respondWith(
-    caches.match(req).then((cached) => {
-      if (cached) return cached;
-      return fetch(req).then((res) => {
-        // Cache successful same-origin or font responses
-        if (res.ok && (req.url.startsWith(self.location.origin) || req.url.includes('fonts.g'))) {
-          const copy = res.clone();
-          caches.open(CACHE_VERSION).then((c) => c.put(req, copy));
+    caches.open(CACHE_VERSION).then(async (cache) => {
+      const cached = await cache.match(req);
+      const network = fetch(req).then((res) => {
+        if (res && res.ok && (req.url.startsWith(self.location.origin) || req.url.includes('fonts.g'))) {
+          cache.put(req, res.clone());
         }
         return res;
       }).catch(() => cached);
+      return cached || network;
     }),
   );
 });
