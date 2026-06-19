@@ -112,6 +112,8 @@ window.KbModule = (function () {
       rafId: null,
       sessionId: null,
     };
+    ensureAudio();      // unlock audio within the start gesture
+    requestWakeLock();  // keep screen awake for the workout
     rerender();
     tickLoop();
   }
@@ -161,24 +163,29 @@ window.KbModule = (function () {
       state.pausedAccumMs += Date.now() - state.pauseStartMs;
       state.pauseStartMs = null;
       state.paused = false;
+      requestWakeLock();
       tickLoop();
     } else {
       state.paused = true;
       state.pauseStartMs = Date.now();
       cancelAnimationFrame(state.rafId);
+      releaseWakeLock();
     }
     refreshActiveView();
   }
 
   async function finishWorkout() {
     cancelAnimationFrame(state.rafId);
-    const durationMin = Math.round((Date.now() - state.workoutStartedAt) / 60000);
+    releaseWakeLock();
+    beep(660, 300); vibrate(140); // closing tone
+    const completed = state.idx >= state.segments.length;
+    const durationMin = Math.max(1, Math.round((Date.now() - state.workoutStartedAt) / 60000));
     try {
       const session = await window.api.createSession({
         module: 'kb',
         variant: state.variant,
         duration: durationMin,
-        notes: window.KB_WORKOUTS[state.variant].name,
+        notes: window.KB_WORKOUTS[state.variant].name + (completed ? '' : ' (abgebrochen)'),
       });
       state.sessionId = session.id;
     } catch (e) {
@@ -269,9 +276,17 @@ window.KbModule = (function () {
   }
 
   let audioCtx = null;
-  function beep(freq = 880, durationMs = 150) {
+  function ensureAudio() {
     try {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended' && audioCtx.resume) audioCtx.resume();
+    } catch (e) {}
+  }
+  function beep(freq = 880, durationMs = 150) {
+    if (window.Settings && !window.Settings.soundOn()) return;
+    try {
+      ensureAudio();
+      if (!audioCtx) return;
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.frequency.value = freq;
@@ -280,14 +295,38 @@ window.KbModule = (function () {
       osc.connect(gain).connect(audioCtx.destination);
       osc.start();
       osc.stop(audioCtx.currentTime + durationMs / 1000);
-    } catch (e) {
-      // audio context might be blocked until user interaction
-    }
+    } catch (e) {}
   }
+
+  function vibrate(ms) {
+    if (window.Settings && !window.Settings.vibrateOn()) return;
+    try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {}
+  }
+
+  // Keep the screen awake during a workout so the segment timer + beeps fire
+  // reliably (rAF/audio freeze when the screen sleeps). Re-acquire on return.
+  let wakeLock = null;
+  async function requestWakeLock() {
+    try {
+      if ('wakeLock' in navigator && document.visibilityState === 'visible' && !wakeLock) {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; });
+      }
+    } catch (e) {}
+  }
+  function releaseWakeLock() { try { if (wakeLock) { wakeLock.release(); wakeLock = null; } } catch (e) {} }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (!state || state.paused || state.idx >= state.segments.length) return;
+    requestWakeLock();
+    cancelAnimationFrame(state.rafId);
+    tickLoop();
+  });
 
   function rerender() {
     document.getElementById('view').replaceChildren(render());
   }
 
-  return { render, reset: () => { if (state) cancelAnimationFrame(state.rafId); state = null; } };
+  return { render, reset: () => { if (state) cancelAnimationFrame(state.rafId); releaseWakeLock(); state = null; } };
 })();

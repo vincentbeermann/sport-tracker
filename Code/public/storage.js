@@ -35,6 +35,12 @@
     return window.fb.db.collection('users').doc(uid).collection('sessions');
   }
 
+  function planDoc() {
+    var uid = window.fb && window.fb.uid;
+    if (!uid) throw new Error('not authenticated');
+    return window.fb.db.collection('users').doc(uid).collection('meta').doc('plan');
+  }
+
   async function loadSessions() {
     var snap = await sessionsCol().get();
     return snap.docs.map(function (d) {
@@ -100,7 +106,53 @@
       }
     }
 
-    return { total: total, last: last, days: days, streak: streak };
+    // Sessions in the current ISO week (for the weekly-goal progress).
+    var currentWeekKey = isoWeekKey(todayISO());
+    var thisWeekCount = sessions.filter(function (s) { return isoWeekKey(s.date) === currentWeekKey; }).length;
+
+    // Longest run of consecutive active weeks ever (insight, not a trophy).
+    var longestStreak = 0;
+    var sortedDates = sessions.map(function (s) { return s.date; }).filter(Boolean).sort();
+    if (sortedDates.length) {
+      var run = 0;
+      var walk = new Date(sortedDates[0]);
+      while (walk <= today) {
+        if (weekSet.has(isoWeekKey(walk.toISOString().slice(0, 10)))) {
+          run++; if (run > longestStreak) longestStreak = run;
+        } else { run = 0; }
+        walk.setDate(walk.getDate() + 7);
+      }
+    }
+
+    // Weekly session counts (last 12 ISO weeks).
+    var weekCount = {};
+    for (var wi = 0; wi < sessions.length; wi++) {
+      var wk0 = isoWeekKey(sessions[wi].date);
+      weekCount[wk0] = (weekCount[wk0] || 0) + 1;
+    }
+    var weekly = [];
+    for (var w = 11; w >= 0; w--) {
+      var dW = new Date(today);
+      dW.setDate(dW.getDate() - w * 7);
+      var key = isoWeekKey(dW.toISOString().slice(0, 10));
+      weekly.push({ week: key, count: weekCount[key] || 0 });
+    }
+
+    // Personal bests per gym exercise (heaviest set; reps at that weight).
+    var prs = {};
+    for (var pi = 0; pi < sessions.length; pi++) {
+      var ps = sessions[pi];
+      if (ps.module !== 'gym' || !Array.isArray(ps.sets)) continue;
+      for (var sx = 0; sx < ps.sets.length; sx++) {
+        var set = ps.sets[sx];
+        if (!set || !set.exercise || typeof set.weight !== 'number') continue;
+        if (!prs[set.exercise] || set.weight > prs[set.exercise].weight) {
+          prs[set.exercise] = { weight: set.weight, reps: set.reps, date: ps.date };
+        }
+      }
+    }
+
+    return { total: total, last: last, days: days, streak: streak, weekly: weekly, prs: prs, weekCount: thisWeekCount, longestStreak: longestStreak };
   }
 
   // ---- Public API — same shape as before ----------------------------------
@@ -159,6 +211,42 @@
     async getStats() {
       var sessions = await loadSessions();
       return computeStats(sessions);
+    },
+
+    // Live subscriptions (Firestore onSnapshot) — return an unsubscribe fn.
+    subscribeStats(cb) {
+      try {
+        return sessionsCol().onSnapshot(function (snap) {
+          var sessions = snap.docs.map(function (d) { var x = d.data(); x.id = d.id; return x; });
+          cb(computeStats(sessions));
+        }, function (e) { console.warn('subscribeStats failed:', e); });
+      } catch (e) { return function () {}; }
+    },
+
+    subscribeSessions(cb) {
+      try {
+        return sessionsCol().onSnapshot(function (snap) {
+          var sessions = snap.docs.map(function (d) { var x = d.data(); x.id = d.id; return x; });
+          sessions.sort(function (a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; });
+          cb({ sessions: sessions });
+        }, function (e) { console.warn('subscribeSessions failed:', e); });
+      } catch (e) { return function () {}; }
+    },
+
+    // ---- Weekly plan (coach) — doc at users/{uid}/meta/plan ----------------
+    async getPlan() {
+      try { var d = await planDoc().get(); return d.exists ? d.data() : null; }
+      catch (e) { return null; }
+    },
+    async setPlan(plan) {
+      await planDoc().set(plan, { merge: false });
+      return plan;
+    },
+    subscribePlan(cb) {
+      try {
+        return planDoc().onSnapshot(function (d) { cb(d.exists ? d.data() : null); },
+          function (e) { console.warn('subscribePlan failed:', e); });
+      } catch (e) { return function () {}; }
     },
 
     async exportAll() {
@@ -237,5 +325,18 @@
         console.warn('localStorage migration error:', e);
       }
     },
+  };
+
+  // Weekly-planner config (coach). Sport has multiple session types.
+  window.PLAN_CONFIG = {
+    calName: 'Sport Tracker',
+    prodId: '-//Sport//Coach//DE',
+    defaultTime: '18:00',
+    types: [
+      { key: 'gym',  label: 'Gym',        emoji: '🏋️', duration: 45 },
+      { key: 'run',  label: 'Run',        emoji: '🏃', duration: 30 },
+      { key: 'kb',   label: 'Kettlebell', emoji: '🔔', duration: 20 },
+      { key: 'yoga', label: 'Yoga',       emoji: '🧘', duration: 30 },
+    ],
   };
 })();

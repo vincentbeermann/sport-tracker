@@ -21,5 +21,10 @@
       "type": "image/png",
       "purpose": "any maskable"
     }
+  ],
+  "shortcuts": [
+    { "name": "Gym", "short_name": "Gym", "url": "./#gym", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] },
+    { "name": "Run", "short_name": "Run", "url": "./#run", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] },
+    { "name": "Kettlebell", "short_name": "KB", "url": "./#kb", "icons": [{ "src": "icon-192.png", "sizes": "192x192" }] }
   ]
 }
