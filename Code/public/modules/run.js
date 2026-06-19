@@ -78,11 +78,11 @@ window.RunModule = (function () {
       <div class="card stack">
         <div>
           <label class="muted">Dauer (Minuten)</label>
-          <input type="number" id="run-duration" placeholder="z.B. 35" inputmode="numeric">
+          <input type="number" id="run-duration" placeholder="z.B. 35" min="1" max="600" inputmode="numeric">
         </div>
         <div>
           <label class="muted">Distanz (km, optional)</label>
-          <input type="number" id="run-distance" placeholder="z.B. 6.5" step="0.1" inputmode="decimal">
+          <input type="number" id="run-distance" placeholder="z.B. 6.5" step="0.1" min="0" max="200" inputmode="decimal">
         </div>
         <div>
           <label class="muted">Notiz (optional)</label>
@@ -105,8 +105,8 @@ window.RunModule = (function () {
       const distance = parseFloat(wrap.querySelector('#run-distance').value);
       const notes = wrap.querySelector('#run-notes').value;
 
-      if (isNaN(duration) || duration <= 0) {
-        alert('Bitte Dauer angeben.');
+      if (isNaN(duration) || duration <= 0 || duration > 600) {
+        alert('Bitte eine gültige Dauer angeben (1–600 min).');
         return;
       }
 
@@ -115,7 +115,7 @@ window.RunModule = (function () {
           module: 'run',
           variant: state.selected,
           duration,
-          distance: isNaN(distance) ? null : distance,
+          distance: (isNaN(distance) || distance < 0) ? null : distance,
           notes,
         });
         state = { phase: 'info', selected: null };

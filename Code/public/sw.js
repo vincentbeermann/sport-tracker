@@ -2,7 +2,7 @@
 // so deployed updates reach installed devices on the next launch. Precache uses
 // {cache:'reload'} so a new version never caches a stale (max-age) copy.
 
-const CACHE_VERSION = 'sport-firebase-v5';
+const CACHE_VERSION = 'sport-firebase-v17';
 const APP_SHELL = [
   './',
   'index.html',
@@ -12,6 +12,7 @@ const APP_SHELL = [
   'exercises.js',
   'firebase-config.js',
   'firebase-init.js',
+  'settings.js',
   'messaging.js',
   'vendor/firebase-app-compat.js',
   'vendor/firebase-auth-compat.js',
@@ -22,6 +23,7 @@ const APP_SHELL = [
   'modules/yoga.js',
   'modules/kb.js',
   'modules/dashboard.js',
+  'modules/plan.js',
   'manifest.webmanifest',
   'icon-192.png',
   'icon-512.png',

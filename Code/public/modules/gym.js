@@ -134,10 +134,13 @@ window.GymModule = (function () {
 
     const detail = document.createElement('div');
     detail.className = 'exercise-detail collapsed';
-    detail.appendChild(renderDetailContent(ex.exercise));
     row.appendChild(detail);
+    let detailBuilt = false;
 
     head.querySelector('.info-btn').addEventListener('click', () => {
+      // Build the (continuously-animated) coaching panel lazily on first open,
+      // so collapsed exercises don't run animations off-screen.
+      if (!detailBuilt) { detail.appendChild(renderDetailContent(ex.exercise)); detailBuilt = true; }
       detail.classList.toggle('collapsed');
     });
 
@@ -217,9 +220,9 @@ window.GymModule = (function () {
     const input = document.createElement('div');
     input.className = 'set-row input';
     input.innerHTML = `
-      <input type="number" class="weight-in" placeholder="kg" step="2.5" inputmode="decimal">
+      <input type="number" class="weight-in" placeholder="kg" step="2.5" min="0" max="1000" inputmode="decimal">
       <span class="set-x">×</span>
-      <input type="number" class="reps-in" placeholder="reps" inputmode="numeric">
+      <input type="number" class="reps-in" placeholder="reps" min="1" max="100" inputmode="numeric">
       <button class="add-set">+</button>
     `;
     const weightIn = input.querySelector('.weight-in');
@@ -236,11 +239,12 @@ window.GymModule = (function () {
     function commitSet() {
       const w = parseFloat(weightIn.value);
       const r = parseInt(repsIn.value, 10);
-      if (isNaN(w) || isNaN(r) || r <= 0) return;
+      // Reject empty / negative / absurd values silently.
+      if (isNaN(w) || w < 0 || w > 1000 || isNaN(r) || r <= 0 || r > 100) return;
       state.sets.push({ exercise: ex.exercise, weight: w, reps: r });
       saveSets();
       rerenderList();
-      startRest(90); // rest timer between sets
+      startRest(window.Settings ? window.Settings.get('gymRest', 90) : 90); // rest timer
       // keep weight, clear reps for the next set
       repsIn.value = '';
       repsIn.focus();
@@ -275,6 +279,7 @@ window.GymModule = (function () {
 
   let audioCtx = null;
   function beep(freq, ms) {
+    if (window.Settings && !window.Settings.soundOn()) return;
     try {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       if (audioCtx.state === 'suspended' && audioCtx.resume) audioCtx.resume();
@@ -288,7 +293,10 @@ window.GymModule = (function () {
       o.start(n); o.stop(n + ms / 1000 + 0.05);
     } catch (e) {}
   }
-  function vibrate(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {} }
+  function vibrate(ms) {
+    if (window.Settings && !window.Settings.vibrateOn()) return;
+    try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {}
+  }
 
   let restEndMs = 0, restTimer = null;
 
