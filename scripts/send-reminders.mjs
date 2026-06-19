@@ -41,12 +41,45 @@ function summarize(sessions) {
   return { trainedToday, daysSince, streak, weekCount, count: sessions.length };
 }
 
-function craftMessage(stats, slot) {
+const TYPE_LABELS = { gym: 'Gym 🏋️', run: 'Run 🏃', kb: 'Kettlebell 🔔', yoga: 'Yoga 🧘' };
+
+// The session planned for today (Mon=0..Sun=6), earliest first, or null.
+function plannedToday(plan) {
+  if (!plan || !Array.isArray(plan.items)) return null;
+  const wd = (new Date(todayISO()).getDay() + 6) % 7;
+  const items = plan.items.filter((i) => i.day === wd);
+  if (!items.length) return null;
+  items.sort((a, b) => String(a.time).localeCompare(String(b.time)));
+  return items[0];
+}
+
+// Data-aware: reads the weekly plan + history. Feedback/insight tone, not
+// gamified pressure (Vincent's design rule).
+function craftMessage(stats, slot, plan) {
   if (stats.trainedToday) return null; // already trained — don't nag
+
+  const today = plannedToday(plan);
+  const target = plan && plan.target ? plan.target : null;
+  const wc = stats.weekCount;
+  const left = target ? Math.max(0, target - wc) : null;
+  const label = today ? (TYPE_LABELS[today.type] || 'Einheit') : null;
+
+  // never miss twice — gentle re-entry after exactly one missed day.
+  if (stats.daysSince === 1) {
+    const t = slot === 'morning' ? '🏋️ Guten Morgen' : '🌙 Noch nichts heute?';
+    return { title: t, body: 'Gestern Pause — heute wieder rein, damit es kein Muster wird.' };
+  }
 
   if (slot === 'morning') {
     if (stats.count === 0) {
       return { title: '🏋️ Los geht’s', body: 'Erste Einheit eintragen — der Anfang zählt.' };
+    }
+    if (today) {
+      const goal = target ? ` · ${wc}/${target} diese Woche` : '';
+      return { title: '🏋️ Heute geplant', body: `${label} um ${today.time}${goal}.` };
+    }
+    if (left != null && left > 0) {
+      return { title: '🏋️ Guten Morgen', body: `${wc}/${target} diese Woche — eine Einheit bringt dich auf Kurs.` };
     }
     if (stats.daysSince != null && stats.daysSince >= 3) {
       return { title: '🏋️ Zeit zu trainieren', body: `${stats.daysSince} Tage Pause — heute eine Einheit?` };
@@ -55,8 +88,14 @@ function craftMessage(stats, slot) {
   }
 
   // evening
+  if (today) {
+    return { title: '🌙 Noch nichts heute?', body: `${label} war für ${today.time} geplant — geht noch.` };
+  }
+  if (left != null && left > 0) {
+    return { title: '🌙 Noch nichts heute?', body: `Noch ${left} bis zum Wochenziel — kurze Einheit?` };
+  }
   if (stats.streak > 0) {
-    return { title: '🌙 Noch nichts heute?', body: `Halte deinen ${stats.streak}-Wochen-Streak — kurze Einheit?` };
+    return { title: '🌙 Noch nichts heute?', body: `Halte deine ${stats.streak}-Wochen-Serie — kurze Einheit?` };
   }
   return { title: '🌙 Tag fast vorbei', body: 'Eine kurze Einheit ginge noch.' };
 }
@@ -84,7 +123,9 @@ async function main() {
   for (const [uid, tokenRefs] of byUser) {
     const sessSnap = await db.collection('users').doc(uid).collection('sessions').get();
     const sessions = sessSnap.docs.map((d) => d.data());
-    const msg = craftMessage(summarize(sessions), slot);
+    const planSnap = await db.collection('users').doc(uid).collection('meta').doc('plan').get();
+    const plan = planSnap.exists ? planSnap.data() : null;
+    const msg = craftMessage(summarize(sessions), slot, plan);
     if (!msg) { skipped++; continue; }
 
     for (const ref of tokenRefs) {
