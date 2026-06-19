@@ -89,12 +89,16 @@ async function main() {
 
     for (const ref of tokenRefs) {
       try {
+        // Data-only: the SW's onBackgroundMessage renders exactly one
+        // notification. A `notification` block would auto-display AND fire
+        // onBackgroundMessage → two notifications for one reminder.
         await messaging.send({
           token: ref.id,
-          notification: { title: msg.title, body: msg.body },
-          webpush: {
-            notification: { title: msg.title, body: msg.body, icon: ICON, badge: ICON, tag: 'sport-reminder' },
-            fcmOptions: { link: APP_URL + '/' },
+          data: {
+            title: msg.title,
+            body: msg.body,
+            tag: 'sport-reminder',
+            url: APP_URL + '/',
           },
         });
         sent++;
