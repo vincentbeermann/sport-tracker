@@ -71,6 +71,8 @@ window.addEventListener('hashchange', () => {
 window.bootApp = function () {
   window.__booted = true;
   navigate(currentRoute());
+  // Keep the push token alive (iOS tokens expire) — silent if not yet permitted.
+  if (window.Reminders && window.Reminders.refresh) window.Reminders.refresh();
 };
 
 // window.api is provided by storage.js (Firestore-backed, offline-capable)
